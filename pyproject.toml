@@ -1,0 +1,11 @@
+[project]
+name = "ai"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "langchain[anthropic,openai]>=1.2.15",
+    "langchain-tavily>=0.2.11",
+    "ruff>=0.15.11",
+]
