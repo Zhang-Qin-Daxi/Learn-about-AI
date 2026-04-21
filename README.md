@@ -3,6 +3,7 @@
 一个基于 LangChain 的小型 Agent 示例项目，支持：
 - OpenAI / Anthropic 双模型切换
 - 天气工具调用（`main.py`）
+- Tavily 实时网页搜索（`main.py`）
 - Mock 搜索与 Tavily 搜索切换（`main copy.py`）
 
 ## 环境要求
@@ -41,13 +42,14 @@ USER_QUERY=北京今天天气如何？
 
 ## 运行方式
 
-### 运行主脚本（天气工具 Agent）
+### 运行主脚本（天气与网页搜索 Agent）
 
 ```bash
 uv run python main.py
 ```
 
 行为说明：
+- 设置 `TAVILY_API_KEY` 后，`main.py` 会启用 Tavily 实时网页搜索工具
 - 若设置了 `USER_QUERY`，会执行一次问答后退出
 - 若没有设置 `USER_QUERY`，会进入交互模式（输入 `exit` 或 `quit` 退出）
 
@@ -76,4 +78,5 @@ uv run python "main copy.py"
 - 当 `MODEL_PROVIDER=anthropic` 时必须设置 `ANTHROPIC_API_KEY`
 
 `TAVILY_API_KEY is not set`：
-- 仅在运行 `main copy.py` 且 `USE_MOCK_SEARCH=false` 时需要设置
+- 若希望 `main.py` 启用实时网页搜索，请设置 `TAVILY_API_KEY`
+- 运行 `main copy.py` 且 `USE_MOCK_SEARCH=false` 时也需要设置 `TAVILY_API_KEY`
