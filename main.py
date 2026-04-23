@@ -1,6 +1,6 @@
 import os  # 导入 `os` 模块，用于读取和设置环境变量。
-import sys  # 导入 `sys`，用于读取命令行参数。
 from pathlib import Path  # 导入 `Path`，用于以面向对象的方式处理文件路径。
+from typing import Any
 from urllib.parse import urlparse  # 导入 `urlparse`，用于解析并规范化 OpenAI 接口地址。
 from urllib.error import (
     HTTPError,
@@ -29,6 +29,7 @@ def load_env_file(
     if not env_path.exists():  # 如果 `.env` 文件不存在，就直接结束函数。
         return  # 提前返回，避免后续读取文件时报错。
 
+    parsed_values: dict[str, str] = {}
     for raw_line in env_path.read_text().splitlines():  # 逐行读取 `.env` 文件内容。
         line = raw_line.strip()  # 去掉每行首尾空白字符，便于统一处理。
         if (
@@ -37,9 +38,97 @@ def load_env_file(
             continue  # 当前行不处理，继续下一行。
 
         key, value = line.split("=", 1)  # 按第一个 `=` 分割成环境变量名和值。
+        parsed_values[key.strip()] = value.strip().strip("\"'")
+
+    for key, value in parsed_values.items():
         os.environ.setdefault(
-            key.strip(), value.strip().strip("\"'")
-        )  # 仅在环境变量不存在时写入，且去掉值两端空白和引号。
+            key, value
+        )  # 仅在系统环境变量不存在时写入；同一 .env 内后值可覆盖前值。
+
+
+def normalize_message_content(content: Any) -> str:
+    """把模型返回的 content 统一转成可读字符串。"""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        text_parts: list[str] = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                text_parts.append(str(block.get("text", "")))
+        if text_parts:
+            return "\n".join(part for part in text_parts if part)
+    return str(content)
+
+
+def env_bool(name: str, default: bool = False) -> bool:
+    """把环境变量解析为布尔值。"""
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def pick_final_assistant_text(response_messages: list[Any]) -> str:
+    """从消息列表中尽量取到最后一条助手文本。"""
+    for message in reversed(response_messages):
+        msg_type = str(getattr(message, "type", "")).lower()
+        msg_role = str(getattr(message, "role", "")).lower()
+        if msg_type == "ai" or msg_role == "assistant":
+            return normalize_message_content(getattr(message, "content", ""))
+    if response_messages:
+        return normalize_message_content(getattr(response_messages[-1], "content", ""))
+    return ""
+
+
+def debug_print_response_messages(response_messages: list[Any]) -> None:
+    """打印最近几条返回消息的关键信息，便于排查工具调用问题。"""
+    print("[DEBUG] Recent response messages:")
+    for idx, message in enumerate(response_messages[-6:]):
+        msg_type = getattr(message, "type", type(message).__name__)
+        msg_role = getattr(message, "role", "")
+        content = normalize_message_content(getattr(message, "content", ""))
+        content_preview = content.replace("\n", " ")[:120]
+        print(
+            f"[DEBUG] #{idx + 1}: type={msg_type}, role={msg_role}, "
+            f"content_len={len(content)}, preview={content_preview!r}"
+        )
+        tool_calls = getattr(message, "tool_calls", None)
+        if tool_calls:
+            print(f"[DEBUG]    tool_calls={tool_calls}")
+
+
+def load_memory(path: Path) -> list[dict[str, str]]:
+    """从本地 JSON 文件读取历史记忆，格式异常时返回空记忆。"""
+    if not path.exists():
+        return []
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+
+    if not isinstance(payload, list):
+        return []
+
+    memory: list[dict[str, str]] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        role = str(item.get("role", "")).strip()
+        content = str(item.get("content", "")).strip()
+        if role in {"user", "assistant"} and content:
+            memory.append({"role": role, "content": content})
+    return memory
+
+
+def save_memory(path: Path, memory: list[dict[str, str]]) -> None:
+    """把历史记忆写入本地 JSON 文件。"""
+    try:
+        path.write_text(
+            json.dumps(memory, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    except OSError:
+        # 记忆持久化失败不影响主流程对话。
+        return
 
 
 @tool  # 使用 `@tool` 装饰器，把下面的函数注册为 LangChain 可调用工具。
@@ -202,6 +291,14 @@ def main() -> None:  # 定义程序主入口函数。
             "For questions that do not need real-time external data, answer normally without using tools."  # 明确说明普通问题直接回答即可。
         ),  # 结束系统提示词定义。
     )  # 结束智能体创建。
+    memory_file = Path(
+        os.getenv("AGENT_MEMORY_FILE", ".agent_memory.json")
+    )  # 读取记忆文件路径，默认写在项目根目录。
+    max_memory_messages = int(
+        os.getenv("AGENT_MEMORY_MAX_MESSAGES", "40")
+    )  # 限制记忆条数，避免上下文无限增长。
+    debug_mode = env_bool("AGENT_DEBUG", False)  # 是否输出调试日志。
+    memory = load_memory(memory_file)  # 从本地加载历史记忆。
 
     # initial_query = resolve_initial_query()  # 先尝试解析一次性提问内容。
     # if initial_query is not None:  # 如果拿到了一次性问题，则只调用一次智能体后退出。
@@ -225,6 +322,13 @@ def main() -> None:  # 定义程序主入口函数。
     print(
         "进入交互模式，直接输入问题即可；输入 exit 或 quit 结束。"
     )  # 提示用户当前进入连续对话模式。
+    if debug_mode:
+        print(
+            f"[DEBUG] Tools loaded: {[tool.name for tool in tools]}; "
+            f"TAVILY_API_KEY set={bool(os.getenv('TAVILY_API_KEY'))}"
+        )
+    if memory:
+        print(f"已加载 {len(memory)} 条历史记忆。")
     while True:  # 循环读取用户输入，支持连续提问。
         try:  # 捕获输入过程中的中断和结束信号，避免程序直接报错退出。
             user_query = input("你: ").strip()  # 从终端读取一行用户输入并去掉首尾空白。
@@ -241,10 +345,21 @@ def main() -> None:  # 定义程序主入口函数。
         if user_query.lower() in {"exit", "quit"}:  # 支持常见退出命令。
             print("已退出。")  # 输出退出提示。
             break  # 跳出循环，结束程序。
+        if user_query.lower() == "/memory clear":  # 支持手动清空当前记忆。
+            memory = []
+            save_memory(memory_file, memory)
+            print("记忆已清空。")
+            continue
 
         try:  # 捕获 OpenAI 兼容网关返回非标准结构时的典型异常，给出更可操作的提示。
+            messages = memory + [{"role": "user", "content": user_query}]
+            if debug_mode:
+                print(
+                    f"[DEBUG] Sending {len(messages)} messages to agent, "
+                    f"last_user_query={user_query!r}"
+                )
             response = agent.invoke(
-                {"messages": [{"role": "user", "content": user_query}]}
+                {"messages": messages}
             )  # 用当前问题调用智能体并获取回复。
         except (
             AttributeError
@@ -255,8 +370,32 @@ def main() -> None:  # 定义程序主入口函数。
                 )
                 continue
             raise
-        final_message = response["messages"][-1]  # 取消息列表中的最后一条作为最终回复。
-        print(final_message.content)  # 把最终回复内容输出到标准输出。
+        except Exception as exc:
+            print("这次请求失败，可能是模型或工具调用异常，请重试。")
+            if debug_mode:
+                print(f"[DEBUG] Invoke exception type={type(exc).__name__}, detail={exc}")
+            continue
+
+        response_messages = response.get("messages", [])
+        if debug_mode:
+            debug_print_response_messages(response_messages)
+
+        assistant_text = pick_final_assistant_text(response_messages).strip()
+        if not assistant_text:
+            assistant_text = (
+                "这次模型返回了空内容，可能是搜索工具调用失败或网关返回异常。"
+                "请重试；若持续出现，请开启 AGENT_DEBUG=true 查看详细日志。"
+            )
+        print(assistant_text)  # 把最终回复内容输出到标准输出。
+        memory.extend(
+            [
+                {"role": "user", "content": user_query},
+                {"role": "assistant", "content": assistant_text},
+            ]
+        )
+        if len(memory) > max_memory_messages:
+            memory = memory[-max_memory_messages:]
+        save_memory(memory_file, memory)
 
 
 if __name__ == "__main__":  # 如果当前文件是直接运行而不是被导入，则执行主函数。

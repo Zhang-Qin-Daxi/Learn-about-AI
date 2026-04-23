@@ -36,6 +36,9 @@ OPENAI_BASE_URL=
 
 USE_MOCK_SEARCH=true
 TAVILY_API_KEY=
+AGENT_MEMORY_FILE=.agent_memory.json
+AGENT_MEMORY_MAX_MESSAGES=40
+AGENT_DEBUG=false
 
 USER_QUERY=北京今天天气如何？
 ```
@@ -52,6 +55,10 @@ uv run python main.py
 - 设置 `TAVILY_API_KEY` 后，`main.py` 会启用 Tavily 实时网页搜索工具
 - 若设置了 `USER_QUERY`，会执行一次问答后退出
 - 若没有设置 `USER_QUERY`，会进入交互模式（输入 `exit` 或 `quit` 退出）
+- 交互模式会自动记录对话记忆到 `AGENT_MEMORY_FILE`（默认 `.agent_memory.json`）
+- 可通过 `AGENT_MEMORY_MAX_MESSAGES` 控制保留的历史消息条数（默认 `40`）
+- 在交互模式输入 `/memory clear` 可清空记忆
+- 设置 `AGENT_DEBUG=true` 可打印工具加载、调用消息数量与返回消息摘要，便于排查 Tavily/网关问题
 
 你也可以直接在命令行传入问题：
 
