@@ -12,3 +12,8 @@ wheels/
 # Local secrets
 .env
 .env.*
+
+# Next.js frontend build artifacts
+next-ui/node_modules/
+next-ui/.next/
+next-ui/out/

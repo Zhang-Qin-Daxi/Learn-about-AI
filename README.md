@@ -76,6 +76,44 @@ uv run python "main copy.py"
 - `USE_MOCK_SEARCH=true` 时使用内置模拟搜索
 - `USE_MOCK_SEARCH=false` 时需要设置 `TAVILY_API_KEY`
 
+## 前端页面 + API（Next.js 交互）
+
+### 启动 Python API
+
+在项目根目录运行：
+
+```bash
+uv run python api_server.py
+```
+
+默认监听地址：
+
+- `http://127.0.0.1:8000`
+- 接口：`POST /api/chat`
+- 请求体示例：`{"message":"北京今天天气如何？"}`
+- 响应体示例：`{"answer":"..."}` 
+
+可选环境变量：
+
+- `AGENT_API_HOST`（默认 `127.0.0.1`）
+- `AGENT_API_PORT`（默认 `8000`）
+
+### 启动 Next.js 前端
+
+```bash
+cd next-ui
+bun install
+bun run dev
+```
+
+默认访问：
+
+- `http://localhost:3001`
+
+前端通过 `NEXT_PUBLIC_API_BASE_URL` 指向 Python API，示例见：
+
+- `next-ui/.env.local.example`
+
 ## 常见问题
 
 `OPENAI_API_KEY is not set`：
