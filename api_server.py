@@ -36,9 +36,11 @@ class AgentService:
         self.memory_file = Path(os.getenv("AGENT_MEMORY_FILE", ".agent_memory.json"))
         self.max_memory_messages = int(os.getenv("AGENT_MEMORY_MAX_MESSAGES", "40"))
         self.memory: list[dict[str, str]] = load_memory(self.memory_file)
+        # 线程锁 同一时间只允许一个线程进入临界区，避免多个线程同时改同一份数据导致冲突。
         self.lock = Lock()
 
     def ask(self, user_query: str) -> str:
+        # 这里是临界区，同一时刻只有一个线程能执行
         with self.lock:
             messages = self.memory + [{"role": "user", "content": user_query}]
             response = self.agent.invoke({"messages": messages})
