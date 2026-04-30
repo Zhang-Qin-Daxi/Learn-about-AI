@@ -45,9 +45,10 @@ class AgentService:
         memory_env_name: str,
         default_memory_file: str,
         provider_override: str | None = None,
+        model_override: str | None = None,
     ) -> None:
         self.agent = create_agent(
-            model=build_model(provider_override),
+            model=build_model(provider_override, model_override),
             tools=build_tools(),
             system_prompt=system_prompt,
         )
@@ -104,6 +105,7 @@ def resolve_chef_image_provider() -> str:
 
 
 CHEF_IMAGE_PROVIDER = resolve_chef_image_provider()
+CHEF_IMAGE_MODEL = os.getenv("CHEF_IMAGE_MODEL", "").strip() or None
 
 SERVICES = {
     "/api/chat": AgentService(
@@ -123,6 +125,7 @@ CHEF_IMAGE_SERVICE = AgentService(
     memory_env_name="CHEF_AGENT_MEMORY_FILE",
     default_memory_file=".chef_agent_memory.json",
     provider_override=CHEF_IMAGE_PROVIDER,
+    model_override=CHEF_IMAGE_MODEL,
 )
 
 

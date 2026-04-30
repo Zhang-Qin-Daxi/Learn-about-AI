@@ -192,6 +192,7 @@ def get_weather(
 
 def build_model(
     provider_override: str | None = None,
+    model_override: str | None = None,
 ):  # 定义模型构建函数，根据环境变量选择不同的模型提供商。
     provider = (
         provider_override or os.getenv("MODEL_PROVIDER", "anthropic")
@@ -204,8 +205,8 @@ def build_model(
                 "OPENAI_API_KEY is not set. Please add it to .env."
             )  # 报告缺少 OpenAI API Key。
 
-        model_name = os.getenv(
-            "OPENAI_MODEL", "gpt-5.2"
+        model_name = (
+            model_override or os.getenv("OPENAI_MODEL", "gpt-5.2")
         )  # 读取 OpenAI 模型名，默认使用 `gpt-5.2`。
         base_url = os.getenv("OPENAI_BASE_URL")  # 读取可选的 OpenAI 兼容接口地址。
         model_kwargs = {}  # 初始化一个字典，用于按需收集额外的模型参数。
@@ -234,8 +235,8 @@ def build_model(
                 "ANTHROPIC_API_KEY is not set. Please add it to .env."
             )  # 报告缺少 Anthropic API Key。
 
-        model_name = os.getenv(
-            "ANTHROPIC_MODEL", "claude-sonnet-4-5"
+        model_name = (
+            model_override or os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5")
         )  # 读取 Anthropic 模型名，默认使用 `claude-sonnet-4-5`。
         return init_chat_model(
             model_name, model_provider="anthropic"
