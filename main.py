@@ -190,10 +190,12 @@ def get_weather(
     )  # 结束多行字符串拼接并返回最终结果。
 
 
-def build_model():  # 定义模型构建函数，根据环境变量选择不同的模型提供商。
+def build_model(
+    provider_override: str | None = None,
+):  # 定义模型构建函数，根据环境变量选择不同的模型提供商。
     provider = (
-        os.getenv("MODEL_PROVIDER", "anthropic").strip().lower()
-    )  # 读取模型提供商配置，默认是 `anthropic`，并统一成小写。
+        provider_override or os.getenv("MODEL_PROVIDER", "anthropic")
+    ).strip().lower()  # 读取模型提供商配置，默认是 `anthropic`，并统一成小写。
 
     if provider == "openai":  # 如果配置的提供商是 OpenAI，则进入 OpenAI 初始化分支。
         api_key = os.getenv("OPENAI_API_KEY")  # 读取 OpenAI 的 API Key。

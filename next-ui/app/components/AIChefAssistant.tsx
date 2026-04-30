@@ -6,6 +6,7 @@ type AIChefAssistantProps = {
   kitchenSubmitted: string;
   canKitchenSubmit: boolean;
   kitchenFeatures: string[];
+  kitchenReply: string;
   setKitchenValue: (value: string) => void;
   handleKitchenKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void;
   handleKitchenImageChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
@@ -20,6 +21,7 @@ export default function AIChefAssistant({
   canKitchenSubmit,
   kitchenFeatures,
   setKitchenValue,
+  kitchenReply,
   handleKitchenKeyDown,
   handleKitchenImageChange,
   handleKitchenSubmit,
@@ -50,7 +52,7 @@ export default function AIChefAssistant({
       </div>
 
       <div className="flex min-h-[320px] flex-col rounded-[28px] border border-white/10 bg-white/[0.03] px-6 py-8 text-center shadow-composer backdrop-blur-sm sm:min-h-[360px]">
-        <div className="flex flex-wrap justify-center gap-2">
+        {/* <div className="flex flex-wrap justify-center gap-2">
           {kitchenFeatures.map((feature) => (
             <span
               key={feature}
@@ -59,12 +61,12 @@ export default function AIChefAssistant({
               {feature}
             </span>
           ))}
-        </div>
+        </div> */}
 
         <div className="my-auto flex flex-col items-center">
-          <div className="grid h-14 w-14 place-items-center rounded-full border border-white/10 bg-white/[0.05] text-xl text-amber-200">
+          {/* <div className="grid h-14 w-14 place-items-center rounded-full border border-white/10 bg-white/[0.05] text-xl text-amber-200">
             ✦
-          </div>
+          </div> */}
           <h2 className="mt-5 text-xl font-semibold tracking-tight text-zinc-100 sm:text-2xl">上传食材图片开始吧</h2>
           <p className="mt-2 max-w-sm text-sm leading-6 text-zinc-300/68">
             我会帮你识别食材、搜索相关食谱，并按推荐度、难度和营养价值智能排序。
@@ -76,6 +78,14 @@ export default function AIChefAssistant({
           )}
           {!!kitchenSubmitted && (
             <p className="mt-3 max-w-md text-sm leading-6 text-zinc-200/85">最近输入: {kitchenSubmitted}</p>
+          )}
+          {!!kitchenReply && (
+            <div className="mt-6 w-full max-w-2xl rounded-3xl border border-white/10 bg-black/15 p-5 text-left shadow-composer">
+              <p className="m-0 text-xs uppercase tracking-[0.24em] text-amber-200/80">AI 私厨建议</p>
+              <div className="mt-3 whitespace-pre-wrap break-words text-sm leading-7 text-zinc-100/90 sm:text-[15px]">
+                {kitchenReply}
+              </div>
+            </div>
           )}
         </div>
       </div>

@@ -16,14 +16,16 @@ export default function Home() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [kitchenValue, setKitchenValue] = useState("");
   const [kitchenImageName, setKitchenImageName] = useState("");
+  const [kitchenImageDataUrl, setKitchenImageDataUrl] = useState("");
   const [kitchenSubmitted, setKitchenSubmitted] = useState("");
+  const [kitchenReply, setKitchenReply] = useState("");
 
   const kitchenFeatures = ["图片识别", "智能搜索", "智能排序", "创意建议"];
 
   const canSubmit = useMemo(() => value.trim().length > 0 && !isSubmitting, [value, isSubmitting]);
   const canKitchenSubmit = useMemo(
-    () => kitchenValue.trim().length > 0 || kitchenImageName.length > 0,
-    [kitchenValue, kitchenImageName]
+    () => (kitchenValue.trim().length > 0 || kitchenImageDataUrl.length > 0) && !isSubmitting,
+    [kitchenValue, kitchenImageDataUrl, isSubmitting]
   );
 
   async function handleSubmit() {
@@ -74,22 +76,66 @@ export default function Home() {
 
   function handleKitchenImageChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
-    setKitchenImageName(file ? file.name : "");
+    if (!file) {
+      setKitchenImageName("");
+      setKitchenImageDataUrl("");
+      return;
+    }
+
+    setKitchenImageName(file.name);
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setKitchenImageDataUrl(typeof reader.result === "string" ? reader.result : "");
+    };
+    reader.onerror = () => {
+      setKitchenImageDataUrl("");
+      setError("图片读取失败，请重新选择");
+    };
+    reader.readAsDataURL(file);
   }
 
-  function handleKitchenSubmit() {
+  async function handleKitchenSubmit() {
     if (!canKitchenSubmit) return;
     const message = kitchenValue.trim();
     const imageLabel = kitchenImageName ? `图片: ${kitchenImageName}` : "";
 
+    setIsSubmitting(true);
+    setError("");
+    setKitchenReply("");
     setKitchenSubmitted([message, imageLabel].filter(Boolean).join(" · "));
-    setKitchenValue("");
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/chef`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ message, imageDataUrl: kitchenImageDataUrl || undefined }),
+      });
+
+      const payload = (await response.json()) as { answer?: string; error?: string };
+      if (!response.ok) {
+        throw new Error(payload.error || "请求失败");
+      }
+
+      setKitchenReply(payload.answer || "");
+      setKitchenValue("");
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "请求失败，请稍后重试");
+    } finally {
+      setIsSubmitting(false);
+    }
+   
   }
 
   function handleKitchenReset() {
     setKitchenValue("");
     setKitchenImageName("");
+    setKitchenImageDataUrl("");
     setKitchenSubmitted("");
+    setKitchenReply("");
+    setError("");
   }
 
   return (
@@ -143,6 +189,7 @@ export default function Home() {
           handleKitchenImageChange={handleKitchenImageChange}
           handleKitchenSubmit={handleKitchenSubmit}
           handleKitchenReset={handleKitchenReset}
+          kitchenReply={kitchenReply}
         />
       )}
     </main>
