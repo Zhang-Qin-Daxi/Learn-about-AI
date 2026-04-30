@@ -20,8 +20,6 @@ export default function Home() {
   const [kitchenSubmitted, setKitchenSubmitted] = useState("");
   const [kitchenReply, setKitchenReply] = useState("");
 
-  const kitchenFeatures = ["图片识别", "智能搜索", "智能排序", "创意建议"];
-
   const canSubmit = useMemo(() => value.trim().length > 0 && !isSubmitting, [value, isSubmitting]);
   const canKitchenSubmit = useMemo(
     () => (kitchenValue.trim().length > 0 || kitchenImageDataUrl.length > 0) && !isSubmitting,
@@ -183,7 +181,6 @@ export default function Home() {
           kitchenImageName={kitchenImageName}
           kitchenSubmitted={kitchenSubmitted}
           canKitchenSubmit={canKitchenSubmit}
-          kitchenFeatures={kitchenFeatures}
           setKitchenValue={setKitchenValue}
           handleKitchenKeyDown={handleKitchenKeyDown}
           handleKitchenImageChange={handleKitchenImageChange}
