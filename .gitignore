@@ -17,3 +17,7 @@ wheels/
 next-ui/node_modules/
 next-ui/.next/
 next-ui/out/
+
+tsconfig.tsbuildinfo
+.agent_memory.json
+.chef_agent_memory.json

@@ -1,5 +1,7 @@
 import json
 import os
+from binascii import Error as BinasciiError
+from base64 import b64decode
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -106,6 +108,7 @@ def resolve_chef_image_provider() -> str:
 
 CHEF_IMAGE_PROVIDER = resolve_chef_image_provider()
 CHEF_IMAGE_MODEL = os.getenv("CHEF_IMAGE_MODEL", "").strip() or None
+CHEF_IMAGE_MAX_BYTES = 5 * 1024 * 1024
 
 SERVICES = {
     "/api/chat": AgentService(
@@ -127,6 +130,17 @@ CHEF_IMAGE_SERVICE = AgentService(
     provider_override=CHEF_IMAGE_PROVIDER,
     model_override=CHEF_IMAGE_MODEL,
 )
+
+
+def get_data_url_size_bytes(data_url: str) -> int:
+    if "," not in data_url:
+        raise ValueError("Invalid imageDataUrl format")
+
+    _, encoded = data_url.split(",", 1)
+    try:
+        return len(b64decode(encoded, validate=True))
+    except (BinasciiError, ValueError) as exc:
+        raise ValueError("imageDataUrl is not valid base64 data") from exc
 
 
 class RequestHandler(BaseHTTPRequestHandler):
@@ -173,6 +187,29 @@ class RequestHandler(BaseHTTPRequestHandler):
             )
             return
 
+        if self.path == "/api/chef" and image_data_url:
+            try:
+                image_size = get_data_url_size_bytes(image_data_url)
+            except ValueError as exc:
+                self._write_json(
+                    HTTPStatus.BAD_REQUEST,
+                    {"error": str(exc)},
+                )
+                return
+
+            if image_size > CHEF_IMAGE_MAX_BYTES:
+                self._write_json(
+                    HTTPStatus.BAD_REQUEST,
+                    {
+                        "error": "imageDataUrl exceeds 5 MB maximum",
+                        "detail": (
+                            f"Received {image_size} bytes; please upload a smaller "
+                            "image or compress it before retrying."
+                        ),
+                    },
+                )
+                return
+
         try:
             user_query: Any = message
             memory_query = message or "用户上传了一张食材图片，请根据图片识别食材并给出推荐。"
@@ -200,9 +237,20 @@ class RequestHandler(BaseHTTPRequestHandler):
             answer = active_service.ask(user_query, memory_query)
             print('answer', answer)
         except Exception as exc:  # noqa: BLE001
+            error_detail = str(exc)
+            if (
+                "responses stream failed" in error_detail.lower()
+                and os.getenv("OPENAI_BASE_URL")
+            ):
+                error_detail = (
+                    f"{error_detail} "
+                    "Detected a custom OPENAI_BASE_URL. "
+                    "This gateway may not fully support the OpenAI Responses API stream. "
+                    "Try OPENAI_USE_RESPONSES_API=false and OPENAI_DISABLE_STREAMING=true."
+                )
             self._write_json(
                 HTTPStatus.INTERNAL_SERVER_ERROR,
-                {"error": "Agent invocation failed", "detail": str(exc)},
+                {"error": "Agent invocation failed", "detail": error_detail},
             )
             return
 

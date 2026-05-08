@@ -6,9 +6,76 @@ import AIChefAssistant from "./components/AIChefAssistant";
 import AskAssistant from "./components/AskAssistant";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+const MAX_KITCHEN_IMAGE_BYTES = 4.5 * 1024 * 1024;
+const MAX_KITCHEN_IMAGE_DIMENSION = 1600;
+
+function loadImageFromDataUrl(dataUrl: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("图片解码失败"));
+    image.src = dataUrl;
+  });
+}
+
+function dataUrlByteLength(dataUrl: string): number {
+  const base64Payload = dataUrl.split(",", 2)[1] || "";
+  const padding = base64Payload.endsWith("==") ? 2 : base64Payload.endsWith("=") ? 1 : 0;
+  return Math.floor((base64Payload.length * 3) / 4) - padding;
+}
+
+async function optimizeKitchenImage(file: File): Promise<string> {
+  const originalDataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => reject(new Error("图片读取失败"));
+    reader.readAsDataURL(file);
+  });
+
+  if (dataUrlByteLength(originalDataUrl) <= MAX_KITCHEN_IMAGE_BYTES) {
+    return originalDataUrl;
+  }
+
+  const image = await loadImageFromDataUrl(originalDataUrl);
+  const scale = Math.min(1, MAX_KITCHEN_IMAGE_DIMENSION / Math.max(image.width, image.height));
+  const width = Math.max(1, Math.round(image.width * scale));
+  const height = Math.max(1, Math.round(image.height * scale));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("浏览器不支持图片压缩");
+  }
+
+  context.drawImage(image, 0, 0, width, height);
+
+  for (const quality of [0.9, 0.8, 0.7, 0.6, 0.5]) {
+    const compressedDataUrl = canvas.toDataURL("image/jpeg", quality);
+    if (dataUrlByteLength(compressedDataUrl) <= MAX_KITCHEN_IMAGE_BYTES) {
+      return compressedDataUrl;
+    }
+  }
+
+  throw new Error("图片过大，请换一张更小的图片后重试");
+}
+
+function getImageFileFromClipboard(event: React.ClipboardEvent<HTMLElement>): File | null {
+  // 剪贴板里可能同时有文本、HTML 和文件，这里只提取第一张图片文件。
+  for (const item of Array.from(event.clipboardData.items)) {
+    if (item.kind === "file" && item.type.startsWith("image/")) {
+      // 粘贴截图时浏览器通常会把图片暴露成 File，后续可复用现有上传流程。
+      // getAsFile() Web API 原生方法，把这项内容按 File 取出来
+      return item.getAsFile();
+    }
+  }
+  return null;
+}
 
 export default function Home() {
-  const [activeView, setActiveView] = useState<"ask" | "kitchen">("ask");
+  const [activeView, setActiveView] = useState<"ask" | "kitchen">("kitchen");
   const [value, setValue] = useState("");
   const [lastSubmitted, setLastSubmitted] = useState("");
   const [reply, setReply] = useState("");
@@ -72,7 +139,22 @@ export default function Home() {
     }
   }
 
-  function handleKitchenImageChange(event: React.ChangeEvent<HTMLInputElement>) {
+  async function setKitchenImage(file: File) {
+    setKitchenImageName(file.name || "pasted-image.png");
+    setError("");
+
+    try {
+      const optimizedDataUrl = await optimizeKitchenImage(file);
+      setKitchenImageDataUrl(optimizedDataUrl);
+    } catch (imageError) {
+      setKitchenImageName("");
+      setKitchenImageDataUrl("");
+      setError(imageError instanceof Error ? imageError.message : "图片处理失败，请重新选择");
+      throw imageError;
+    }
+  }
+
+  async function handleKitchenImageChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) {
       setKitchenImageName("");
@@ -80,17 +162,21 @@ export default function Home() {
       return;
     }
 
-    setKitchenImageName(file.name);
+    try {
+      await setKitchenImage(file);
+    } catch {
+      event.target.value = "";
+    }
+  }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setKitchenImageDataUrl(typeof reader.result === "string" ? reader.result : "");
-    };
-    reader.onerror = () => {
-      setKitchenImageDataUrl("");
-      setError("图片读取失败，请重新选择");
-    };
-    reader.readAsDataURL(file);
+  async function handleKitchenPaste(event: React.ClipboardEvent<HTMLElement>) {
+    const file = getImageFileFromClipboard(event);
+    if (!file) {
+      return;
+    }
+
+    event.preventDefault();
+    await setKitchenImage(file);
   }
 
   async function handleKitchenSubmit() {
@@ -184,6 +270,7 @@ export default function Home() {
           setKitchenValue={setKitchenValue}
           handleKitchenKeyDown={handleKitchenKeyDown}
           handleKitchenImageChange={handleKitchenImageChange}
+          handleKitchenPaste={handleKitchenPaste}
           handleKitchenSubmit={handleKitchenSubmit}
           handleKitchenReset={handleKitchenReset}
           kitchenReply={kitchenReply}

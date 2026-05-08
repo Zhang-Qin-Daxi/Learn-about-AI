@@ -68,6 +68,19 @@ def env_bool(name: str, default: bool = False) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def env_optional_bool(name: str) -> bool | None:
+    """把环境变量解析为布尔值；未设置或无法识别时返回 None。"""
+    raw = os.getenv(name)
+    if raw is None:
+        return None
+    normalized = raw.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return None
+
+
 def pick_final_assistant_text(response_messages: list[Any]) -> str:
     """从消息列表中尽量取到最后一条助手文本。"""
     for message in reversed(response_messages):
@@ -221,6 +234,21 @@ def build_model(
                 base_url
                 # normalized_base_url  # 把规范化后的接口地址设置到模型参数。
             )
+
+        # 许多 OpenAI 兼容网关只稳定支持 chat/completions，
+        # 在 Agent + tool calling 场景下，优先禁用 responses API 和流式输出。
+        use_responses_api = env_optional_bool("OPENAI_USE_RESPONSES_API")
+        disable_streaming = env_optional_bool("OPENAI_DISABLE_STREAMING")
+
+        if use_responses_api is not None:
+            model_kwargs["use_responses_api"] = use_responses_api
+        elif base_url:
+            model_kwargs["use_responses_api"] = False
+
+        if disable_streaming is not None:
+            model_kwargs["disable_streaming"] = disable_streaming
+        elif base_url:
+            model_kwargs["disable_streaming"] = True
 
         return init_chat_model(
             model_name, model_provider="openai", **model_kwargs

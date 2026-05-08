@@ -9,6 +9,7 @@ type AIChefAssistantProps = {
   setKitchenValue: (value: string) => void;
   handleKitchenKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void;
   handleKitchenImageChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  handleKitchenPaste: (event: React.ClipboardEvent<HTMLElement>) => void;
   handleKitchenSubmit: () => void;
   handleKitchenReset: () => void;
 };
@@ -22,6 +23,7 @@ export default function AIChefAssistant({
   kitchenReply,
   handleKitchenKeyDown,
   handleKitchenImageChange,
+  handleKitchenPaste,
   handleKitchenSubmit,
   handleKitchenReset,
 }: AIChefAssistantProps) {
@@ -49,7 +51,10 @@ export default function AIChefAssistant({
         </div>
       </div>
 
-      <div className="grid gap-2.5 rounded-3xl border border-white/10 bg-white/[0.05] p-2.5 shadow-composer backdrop-blur-md sm:grid-cols-[48px_1fr_48px] sm:items-center">
+      <div
+        className="grid gap-2.5 rounded-3xl border border-white/10 bg-white/[0.05] p-2.5 shadow-composer backdrop-blur-md sm:grid-cols-[48px_1fr_48px] sm:items-center"
+        onPaste={handleKitchenPaste}
+      >
         <label className="grid h-10 w-10 cursor-pointer place-items-center rounded-full bg-white/[0.08] text-base text-zinc-200 transition hover:bg-white/[0.12]">
           ⊕
           <input type="file" accept="image/*" className="hidden" onChange={handleKitchenImageChange} />
@@ -57,7 +62,7 @@ export default function AIChefAssistant({
 
         <input
           className="h-10 rounded-full border-0 bg-white/[0.04] px-4 text-sm text-zinc-100 outline-none placeholder:text-zinc-400"
-          placeholder="描述你有的食材，或直接上传一张图片"
+          placeholder="描述你有的食材，或粘贴 / 上传一张图片"
           value={kitchenValue}
           onChange={(event) => setKitchenValue(event.target.value)}
           onKeyDown={handleKitchenKeyDown}
@@ -80,6 +85,7 @@ export default function AIChefAssistant({
           <p className="mt-2 max-w-sm text-sm leading-6 text-zinc-300/68">
             我会帮你识别食材、搜索相关食谱，并按推荐度、难度和营养价值智能排序。
           </p>
+          <p className="mt-2 text-xs tracking-[0.16em] text-zinc-400/75">支持点击上传，也支持直接粘贴截图</p>
           {!!kitchenImageName && (
             <p className="mt-4 rounded-full border border-amber-300/15 bg-amber-300/10 px-3 py-1 text-xs text-amber-100">
               已选择图片: {kitchenImageName}

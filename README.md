@@ -33,6 +33,9 @@ OPENAI_API_KEY=
 OPENAI_MODEL=gpt-5.4
 # 常见 OpenAI 兼容网关地址形态: http://host:port/v1
 OPENAI_BASE_URL=
+# 自定义 OpenAI 兼容网关推荐关闭 Responses API / 流式输出
+OPENAI_USE_RESPONSES_API=false
+OPENAI_DISABLE_STREAMING=true
 
 USE_MOCK_SEARCH=true
 TAVILY_API_KEY=
@@ -125,3 +128,9 @@ bun run dev
 `TAVILY_API_KEY is not set`：
 - 若希望 `main.py` 启用实时网页搜索，请设置 `TAVILY_API_KEY`
 - 运行 `main copy.py` 且 `USE_MOCK_SEARCH=false` 时也需要设置 `TAVILY_API_KEY`
+
+`OpenAI responses stream failed`：
+- 如果你配置了 `OPENAI_BASE_URL` 指向第三方 OpenAI 兼容网关，这通常表示网关对 Responses API 流式协议支持不完整
+- 优先设置 `OPENAI_USE_RESPONSES_API=false`
+- 同时设置 `OPENAI_DISABLE_STREAMING=true`
+- 多数兼容网关只对 `/chat/completions` 更稳定
