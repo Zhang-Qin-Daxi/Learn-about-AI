@@ -43,11 +43,11 @@ class AgentService:
     def __init__(
         self,
         *,
-        system_prompt: str,
-        memory_env_name: str,
-        default_memory_file: str,
-        provider_override: str | None = None,
-        model_override: str | None = None,
+        system_prompt: str,  # 当前 Agent 的系统提示词。
+        memory_env_name: str,  # 记忆文件路径对应的环境变量名。
+        default_memory_file: str,  # 环境变量未设置时使用的默认记忆文件名。
+        provider_override: str | None = None,  # 可选：强制指定当前 Agent 使用的模型提供商。
+        model_override: str | None = None,  # 可选：强制指定当前 Agent 使用的具体模型名。
     ) -> None:
         self.agent = create_agent(
             model=build_model(provider_override, model_override),
@@ -84,7 +84,9 @@ class AgentService:
                 ]
             )
             if len(self.memory) > self.max_memory_messages:
+                # 只保留最近的记忆，避免上下文无限增长。-表示“从后往前数”[倒数第 max_memory_messages 条 : 最后一条]
                 self.memory = self.memory[-self.max_memory_messages :]
+            # 把最新记忆写回本地文件，保证服务重启后还能继续对话。
             save_memory(self.memory_file, self.memory)
             return assistant_text
 
@@ -164,12 +166,14 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self) -> None:  # noqa: N802
+        # 1. 先根据请求路径选中对应的服务实例。
         service = SERVICES.get(self.path)
         if service is None:
             self._write_json(HTTPStatus.NOT_FOUND, {"error": "Not found"})
             return
 
         try:
+            # 2. 读取并解析请求体 JSON。
             content_length = int(self.headers.get("Content-Length", "0"))
             raw_body = self.rfile.read(content_length)
             payload = json.loads(raw_body.decode("utf-8") if raw_body else "{}")
@@ -177,9 +181,11 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._write_json(HTTPStatus.BAD_REQUEST, {"error": "Invalid JSON body"})
             return
 
+        # 3. 提取文本和图片字段，供后续统一校验与分流。
         message = str(payload.get("message", "")).strip()
         image_data_url = str(payload.get("imageDataUrl", "")).strip()
 
+        # 4. 文本和图片至少要提供一个。
         if not message and not image_data_url:
             self._write_json(
                 HTTPStatus.BAD_REQUEST,
@@ -187,6 +193,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             )
             return
 
+        # 5. AI 私厨图片请求先做 base64 格式和体积校验，避免上游模型直接报错。
         if self.path == "/api/chef" and image_data_url:
             try:
                 image_size = get_data_url_size_bytes(image_data_url)
@@ -211,9 +218,11 @@ class RequestHandler(BaseHTTPRequestHandler):
                 return
 
         try:
+            # 6. 默认按纯文本请求构造用户输入与记忆内容。
             user_query: Any = message
             memory_query = message or "用户上传了一张食材图片，请根据图片识别食材并给出推荐。"
 
+            # 7. 如果是 AI 私厨图片请求，则把输入改造成多模态消息。
             if self.path == "/api/chef" and image_data_url:
                 text_prompt = (
                     message
@@ -229,11 +238,14 @@ class RequestHandler(BaseHTTPRequestHandler):
                 else:
                     memory_query = "用户上传了一张食材图片，请根据图片识别食材并给出推荐。"
 
+            # 8. 按请求类型选择实际执行的 Agent 服务。
             active_service = (
                 CHEF_IMAGE_SERVICE
                 if self.path == "/api/chef" and image_data_url
                 else service
             )
+
+            # 9. 调用 Agent，拿到最终回答。
             answer = active_service.ask(user_query, memory_query)
             print('answer', answer)
         except Exception as exc:  # noqa: BLE001
@@ -254,6 +266,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             )
             return
 
+        # 10. 把最终回答返回给前端。
         self._write_json(HTTPStatus.OK, {"answer": answer})
 
     def log_message(self, format: str, *args: Any) -> None:
