@@ -1,9 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import AIChefAssistant from "./components/AIChefAssistant";
-import AskAssistant from "./components/AskAssistant";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
 const MAX_KITCHEN_IMAGE_BYTES = 4.5 * 1024 * 1024;
@@ -62,75 +61,82 @@ async function optimizeKitchenImage(file: File): Promise<string> {
   throw new Error("图片过大，请换一张更小的图片后重试");
 }
 
-function getImageFileFromClipboard(event: React.ClipboardEvent<HTMLElement>): File | null {
+function getImageFileFromClipboard(clipboardData: DataTransfer | null): File | null {
+  if (!clipboardData) {
+    return null;
+  }
+
   // 剪贴板里可能同时有文本、HTML 和文件，这里只提取第一张图片文件。
-  for (const item of Array.from(event.clipboardData.items)) {
+  for (const item of Array.from(clipboardData.items)) {
     if (item.kind === "file" && item.type.startsWith("image/")) {
       // 粘贴截图时浏览器通常会把图片暴露成 File，后续可复用现有上传流程。
       // getAsFile() Web API 原生方法，把这项内容按 File 取出来
       return item.getAsFile();
     }
   }
+
+  for (const file of Array.from(clipboardData.files)) {
+    if (file.type.startsWith("image/")) {
+      return file;
+    }
+  }
+
   return null;
 }
 
 export default function Home() {
-  const [activeView, setActiveView] = useState<"ask" | "kitchen">("kitchen");
-  const [value, setValue] = useState("");
-  const [lastSubmitted, setLastSubmitted] = useState("");
-  const [reply, setReply] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [kitchenValue, setKitchenValue] = useState("");
   const [kitchenImageName, setKitchenImageName] = useState("");
   const [kitchenImageDataUrl, setKitchenImageDataUrl] = useState("");
-  const [kitchenSubmitted, setKitchenSubmitted] = useState("");
-  const [kitchenReply, setKitchenReply] = useState("");
+  // const [kitchenSubmitted, setKitchenSubmitted] = useState("");
+  // const [kitchenReply, setKitchenReply] = useState("");
 
-  const canSubmit = useMemo(() => value.trim().length > 0 && !isSubmitting, [value, isSubmitting]);
+  // const canSubmit = useMemo(() => value.trim().length > 0 && !isSubmitting, [value, isSubmitting]);
   const canKitchenSubmit = useMemo(
     () => (kitchenValue.trim().length > 0 || kitchenImageDataUrl.length > 0) && !isSubmitting,
     [kitchenValue, kitchenImageDataUrl, isSubmitting]
   );
 
-  async function handleSubmit() {
-    if (!canSubmit) return;
-    const message = value.trim();
+  // async function handleSubmit() {
+  //   if (!canSubmit) return;
+  //   const message = value.trim();
 
-    setIsSubmitting(true);
-    setError("");
-    setReply("");
-    setLastSubmitted(message);
+  //   setIsSubmitting(true);
+  //   setError("");
+  //   setReply("");
+  //   setLastSubmitted(message);
 
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/chat`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ message }),
-      });
+  //   try {
+  //     const response = await fetch(`${API_BASE_URL}/api/chat`, {
+  //       method: "POST",
+  //       headers: {
+  //         "Content-Type": "application/json",
+  //       },
+  //       body: JSON.stringify({ message }),
+  //     });
 
-      const payload = (await response.json()) as { answer?: string; error?: string };
-      if (!response.ok) {
-        throw new Error(payload.error || "请求失败");
-      }
+  //     const payload = (await response.json()) as { answer?: string; error?: string };
+  //     if (!response.ok) {
+  //       throw new Error(payload.error || "请求失败");
+  //     }
 
-      setReply(payload.answer || "");
-      setValue("");
-    } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "请求失败，请稍后重试");
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
+  //     setReply(payload.answer || "");
+  //     setValue("");
+  //   } catch (submitError) {
+  //     setError(submitError instanceof Error ? submitError.message : "请求失败，请稍后重试");
+  //   } finally {
+  //     setIsSubmitting(false);
+  //   }
+  // }
 
-  function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      handleSubmit();
-    }
-  }
+  // function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+  //   if (event.key === "Enter") {
+  //     event.preventDefault();
+  //     handleSubmit();
+  //   }
+  // }
 
   function handleKitchenKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
     if (event.key === "Enter") {
@@ -170,7 +176,7 @@ export default function Home() {
   }
 
   async function handleKitchenPaste(event: React.ClipboardEvent<HTMLElement>) {
-    const file = getImageFileFromClipboard(event);
+    const file = getImageFileFromClipboard(event.clipboardData);
     if (!file) {
       return;
     }
@@ -179,6 +185,25 @@ export default function Home() {
     await setKitchenImage(file);
   }
 
+  useEffect(() => {
+    function handleWindowPaste(event: ClipboardEvent) {
+      if (event.defaultPrevented) {
+        return;
+      }
+
+      const file = getImageFileFromClipboard(event.clipboardData);
+      if (!file) {
+        return;
+      }
+
+      event.preventDefault();
+      void setKitchenImage(file);
+    }
+
+    window.addEventListener("paste", handleWindowPaste);
+    return () => window.removeEventListener("paste", handleWindowPaste);
+  }, []);
+
   async function handleKitchenSubmit() {
     if (!canKitchenSubmit) return;
     const message = kitchenValue.trim();
@@ -186,11 +211,11 @@ export default function Home() {
 
     setIsSubmitting(true);
     setError("");
-    setKitchenReply("");
-    setKitchenSubmitted([message, imageLabel].filter(Boolean).join(" · "));
+    // setKitchenReply("");
+    // setKitchenSubmitted([message, imageLabel].filter(Boolean).join(" · "));
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/chef`, {
+      const response = await fetch(`${API_BASE_URL}/api/chat`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -203,7 +228,7 @@ export default function Home() {
         throw new Error(payload.error || "请求失败");
       }
 
-      setKitchenReply(payload.answer || "");
+      // setKitchenReply(payload.answer || "");
       setKitchenValue("");
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "请求失败，请稍后重试");
@@ -213,20 +238,20 @@ export default function Home() {
    
   }
 
-  function handleKitchenReset() {
-    setKitchenValue("");
-    setKitchenImageName("");
-    setKitchenImageDataUrl("");
-    setKitchenSubmitted("");
-    setKitchenReply("");
-    setError("");
-  }
+  // function handleKitchenReset() {
+  //   setKitchenValue("");
+  //   setKitchenImageName("");
+  //   setKitchenImageDataUrl("");
+  //   // setKitchenSubmitted("");
+  //   // setKitchenReply("");
+  //   setError("");
+  // }
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[radial-gradient(85%_60%_at_20%_88%,rgba(255,255,255,0.06),transparent_52%),radial-gradient(65%_45%_at_84%_24%,rgba(16,185,129,0.12),transparent_55%),linear-gradient(130deg,#181b20,#1f232a)] px-4">
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.18),rgba(0,0,0,0))]" aria-hidden="true" />
+      {/* <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.18),rgba(0,0,0,0))]" aria-hidden="true" /> */}
 
-      <div className="relative mx-auto flex w-full max-w-6xl justify-center pt-6">
+      {/* <div className="relative mx-auto flex w-full max-w-6xl justify-center pt-6">
         <div className="inline-flex rounded-full border border-white/10 bg-white/[0.06] p-1 backdrop-blur-md">
           <button
             type="button"
@@ -247,9 +272,9 @@ export default function Home() {
             AI 私厨
           </button>
         </div>
-      </div>
+      </div> */}
 
-      {activeView === "ask" ? (
+      {/* {activeView === "ask" ? (
         <AskAssistant
           value={value}
           setValue={setValue}
@@ -261,21 +286,19 @@ export default function Home() {
           handleSubmit={handleSubmit}
           handleKeyDown={handleKeyDown}
         />
-      ) : (
+      ) : ( */}
         <AIChefAssistant
           kitchenValue={kitchenValue}
           kitchenImageName={kitchenImageName}
-          kitchenSubmitted={kitchenSubmitted}
           canKitchenSubmit={canKitchenSubmit}
           setKitchenValue={setKitchenValue}
           handleKitchenKeyDown={handleKitchenKeyDown}
           handleKitchenImageChange={handleKitchenImageChange}
           handleKitchenPaste={handleKitchenPaste}
           handleKitchenSubmit={handleKitchenSubmit}
-          handleKitchenReset={handleKitchenReset}
-          kitchenReply={kitchenReply}
         />
-      )}
+      {/* )} */}
+      <span>{error}</span>
     </main>
   );
 }

@@ -28,17 +28,6 @@ GENERAL_ASSISTANT_PROMPT = (
     "For questions that do not need real-time external data, answer normally without using tools."
 )
 
-CHEF_ASSISTANT_PROMPT = """
-你是一名私人厨师。收到用户提供的食材照片或清单后，请按以下流程操作：
-1.识别和评估食材：若用户提供照片，首先辨识所有可见食材。基于食材的外观状态，评估其新鲜度与可用量，整理出一份“当前可用食材清单”。
-2.智能食谱检索：优先调用 web_search 工具，以“可用食材清单”为核心关键词，查找可行菜谱。
-3.多维度评估与排序：从营养价值和制作难度两个维度对检索到的候选食谱进行量化打分，并根据得分排序，制作简单且营养丰富的排名靠前。
-4.结构化方案输出：把排序后的食谱整理为一份结构清晰的建议报告，要包含食谱信息、得分、推荐理由、食谱的参考图片，帮助用户快速做出决策。
-
-请严格按照流程，优先调用 web_search 工具搜索食谱，搜索不到的情况下才能自己发挥。
-""".strip()
-
-
 class AgentService:
     def __init__(
         self,
@@ -92,8 +81,10 @@ class AgentService:
 
 load_env_file()
 
-def resolve_chef_image_provider() -> str:
-    configured = os.getenv("CHEF_IMAGE_PROVIDER", "anthropic").strip().lower()
+def resolve_image_provider() -> str:
+    configured = os.getenv("IMAGE_MODEL_PROVIDER", "").strip().lower()
+    if not configured:
+        configured = os.getenv("CHEF_IMAGE_PROVIDER", "anthropic").strip().lower()
     if configured == "anthropic" and os.getenv("ANTHROPIC_API_KEY"):
         return "anthropic"
     if configured == "openai" and os.getenv("OPENAI_API_KEY"):
@@ -108,30 +99,23 @@ def resolve_chef_image_provider() -> str:
     return configured
 
 
-CHEF_IMAGE_PROVIDER = resolve_chef_image_provider()
-CHEF_IMAGE_MODEL = os.getenv("CHEF_IMAGE_MODEL", "").strip() or None
-CHEF_IMAGE_MAX_BYTES = 5 * 1024 * 1024
+IMAGE_PROVIDER = resolve_image_provider()
+IMAGE_MODEL = (
+    os.getenv("IMAGE_MODEL", "").strip()
+    or os.getenv("CHEF_IMAGE_MODEL", "").strip()
+    or None
+)
+IMAGE_MAX_BYTES = 5 * 1024 * 1024
 
 SERVICES = {
     "/api/chat": AgentService(
         system_prompt=GENERAL_ASSISTANT_PROMPT,
         memory_env_name="AGENT_MEMORY_FILE",
         default_memory_file=".agent_memory.json",
-    ),
-    "/api/chef": AgentService(
-        system_prompt=CHEF_ASSISTANT_PROMPT,
-        memory_env_name="CHEF_AGENT_MEMORY_FILE",
-        default_memory_file=".chef_agent_memory.json",
+        provider_override=IMAGE_PROVIDER,
+        model_override=IMAGE_MODEL,
     ),
 }
-
-CHEF_IMAGE_SERVICE = AgentService(
-    system_prompt=CHEF_ASSISTANT_PROMPT,
-    memory_env_name="CHEF_AGENT_MEMORY_FILE",
-    default_memory_file=".chef_agent_memory.json",
-    provider_override=CHEF_IMAGE_PROVIDER,
-    model_override=CHEF_IMAGE_MODEL,
-)
 
 
 def get_data_url_size_bytes(data_url: str) -> int:
@@ -143,6 +127,44 @@ def get_data_url_size_bytes(data_url: str) -> int:
         return len(b64decode(encoded, validate=True))
     except (BinasciiError, ValueError) as exc:
         raise ValueError("imageDataUrl is not valid base64 data") from exc
+
+
+def extract_image_data_url(payload: dict[str, Any]) -> str:
+    image_data_url = str(payload.get("imageDataUrl", "")).strip()
+    if image_data_url:
+        return image_data_url
+
+    image_value = payload.get("image", "")
+    if isinstance(image_value, str):
+        return image_value.strip()
+
+    return ""
+
+
+def build_multimodal_user_query(message: str, image_data_url: str) -> Any:
+    if not image_data_url:
+        return message
+
+    text_prompt = (
+        message
+        if message
+        else (
+            "请基于这张图片回答。"
+            "如果没有额外问题，请先识别图片中的主要内容，再给出有帮助的说明。"
+        )
+    )
+    return [
+        {"type": "text", "text": text_prompt},
+        {"type": "image_url", "image_url": {"url": image_data_url}},
+    ]
+
+
+def build_memory_query(message: str, image_data_url: str) -> str:
+    if message and image_data_url:
+        return f"{message}\n[用户附带了一张图片]"
+    if image_data_url:
+        return "用户上传了一张图片，请基于图片内容回答。"
+    return message
 
 
 class RequestHandler(BaseHTTPRequestHandler):
@@ -183,18 +205,18 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         # 3. 提取文本和图片字段，供后续统一校验与分流。
         message = str(payload.get("message", "")).strip()
-        image_data_url = str(payload.get("imageDataUrl", "")).strip()
+        image_data_url = extract_image_data_url(payload)
 
         # 4. 文本和图片至少要提供一个。
         if not message and not image_data_url:
             self._write_json(
                 HTTPStatus.BAD_REQUEST,
-                {"error": "message or imageDataUrl is required"},
+                {"error": "message or image/imageDataUrl is required"},
             )
             return
 
-        # 5. AI 私厨图片请求先做 base64 格式和体积校验，避免上游模型直接报错。
-        if self.path == "/api/chef" and image_data_url:
+        # 5. 图片请求先做 base64 格式和体积校验，避免上游模型直接报错。
+        if image_data_url:
             try:
                 image_size = get_data_url_size_bytes(image_data_url)
             except ValueError as exc:
@@ -204,11 +226,11 @@ class RequestHandler(BaseHTTPRequestHandler):
                 )
                 return
 
-            if image_size > CHEF_IMAGE_MAX_BYTES:
+            if image_size > IMAGE_MAX_BYTES:
                 self._write_json(
                     HTTPStatus.BAD_REQUEST,
                     {
-                        "error": "imageDataUrl exceeds 5 MB maximum",
+                        "error": "image/imageDataUrl exceeds 5 MB maximum",
                         "detail": (
                             f"Received {image_size} bytes; please upload a smaller "
                             "image or compress it before retrying."
@@ -218,35 +240,12 @@ class RequestHandler(BaseHTTPRequestHandler):
                 return
 
         try:
-            # 6. 默认按纯文本请求构造用户输入与记忆内容。
-            user_query: Any = message
-            memory_query = message or "用户上传了一张食材图片，请根据图片识别食材并给出推荐。"
+            # 6. 统一构造文本/图片混合输入。
+            user_query = build_multimodal_user_query(message, image_data_url)
+            memory_query = build_memory_query(message, image_data_url)
 
-            # 7. 如果是 AI 私厨图片请求，则把输入改造成多模态消息。
-            if self.path == "/api/chef" and image_data_url:
-                text_prompt = (
-                    message
-                    if message
-                    else "请识别这张图片里的食材，并给出可行菜谱推荐。"
-                )
-                user_query = [
-                    {"type": "text", "text": text_prompt},
-                    {"type": "image_url", "image_url": {"url": image_data_url}},
-                ]
-                if message:
-                    memory_query = f"{message}\n[用户附带了一张食材图片]"
-                else:
-                    memory_query = "用户上传了一张食材图片，请根据图片识别食材并给出推荐。"
-
-            # 8. 按请求类型选择实际执行的 Agent 服务。
-            active_service = (
-                CHEF_IMAGE_SERVICE
-                if self.path == "/api/chef" and image_data_url
-                else service
-            )
-
-            # 9. 调用 Agent，拿到最终回答。
-            answer = active_service.ask(user_query, memory_query)
+            # 7. 调用 Agent，拿到最终回答。
+            answer = service.ask(user_query, memory_query)
             print('answer', answer)
         except Exception as exc:  # noqa: BLE001
             error_detail = str(exc)
@@ -266,7 +265,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             )
             return
 
-        # 10. 把最终回答返回给前端。
+        # 8. 把最终回答返回给前端。
         self._write_json(HTTPStatus.OK, {"answer": answer})
 
     def log_message(self, format: str, *args: Any) -> None:
