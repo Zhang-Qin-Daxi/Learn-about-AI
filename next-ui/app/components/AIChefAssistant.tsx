@@ -328,7 +328,7 @@ export default function AIChefAssistant({
         </div>
       ) : (
         <div className="flex flex-col gap-4 sm:gap-5">
-          <span className="text-center text-xl">我们先从哪里开始呢？</span>
+          <span className="text-center text-xl">可以直接问知识库里的内容，也可以继续发图片。</span>
         </div>
       )}
 
@@ -341,7 +341,7 @@ export default function AIChefAssistant({
 
           <input
             className="h-10 rounded-full border-0 bg-white/[0.04] px-4 text-sm text-zinc-100 outline-none placeholder:text-zinc-400"
-            placeholder="描述你有的食材，或粘贴 / 上传一张图片"
+            placeholder="问知识库、问项目，或粘贴 / 上传一张图片"
             value={kitchenValue}
             onChange={(event) => setKitchenValue(event.target.value)}
             onKeyDown={handleKitchenKeyDown}

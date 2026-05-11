@@ -1,7 +1,6 @@
 import os  # 导入 `os` 模块，用于读取和设置环境变量。
 from pathlib import Path  # 导入 `Path`，用于以面向对象的方式处理文件路径。
 from typing import Any
-from urllib.parse import urlparse  # 导入 `urlparse`，用于解析并规范化 OpenAI 接口地址。
 from urllib.error import (
     HTTPError,
     URLError,
@@ -20,6 +19,8 @@ from langchain.tools import (
     tool,
 )  # 导入 `tool` 装饰器，用于把普通函数注册成可供智能体调用的工具。
 from langchain_tavily import TavilySearch  # 导入 Tavily 搜索工具，用于给智能体提供实时网页搜索能力。
+
+from rag import get_default_knowledge_base
 
 
 def load_env_file(
@@ -278,6 +279,10 @@ def build_model(
 def build_tools():  # 定义工具构建函数，集中管理智能体可以调用的外部能力。
     tools = [get_weather]  # 默认注册天气工具，处理实时天气查询。
 
+    knowledge_base_tool = get_default_knowledge_base().as_tool()
+    if knowledge_base_tool is not None:
+        tools.append(knowledge_base_tool)
+
     tavily_api_key = os.getenv("TAVILY_API_KEY")  # 读取 Tavily API Key。
     if tavily_api_key:  # 如果配置了 Tavily Key，则启用实时网页搜索工具。
         tools.append(
@@ -315,6 +320,8 @@ def main() -> None:  # 定义程序主入口函数。
         tools=tools,  # 为智能体注册可调用的外部工具。
         system_prompt=(  # 设置系统提示词，约束智能体的行为。
             "You are a helpful assistant. "  # 告诉模型它是一个有帮助的助手。
+            "Use the search_knowledge_base tool for questions about local documents, internal knowledge, private notes, project rules, product docs, or repository-specific information. "  # 遇到本地知识和私有文档问题时优先检索知识库。
+            "When knowledge base passages are available, answer from those passages and cite the source path. "  # 当命中知识库片段时，要求基于片段回答并标注来源。
             "Use the weather tool for weather questions. "  # 要求模型遇到天气问题时优先调用天气工具。
             "When weather tool results are available, answer based on that data. "  # 要求模型在拿到工具结果后基于结果回答。
             "Use Tavily search for questions that need current web information, recent facts, news, or source-backed answers. "  # 要求模型遇到需要实时网页信息的问题时调用 Tavily。

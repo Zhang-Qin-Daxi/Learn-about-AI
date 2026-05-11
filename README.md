@@ -4,6 +4,7 @@
 - OpenAI / Anthropic 双模型切换
 - 天气工具调用（`main.py`）
 - Tavily 实时网页搜索（`main.py`）
+- 本地知识库 RAG 检索（`rag.py` + `knowledge_base/`）
 - Mock 搜索与 Tavily 搜索切换（`main copy.py`）
 
 ## 环境要求
@@ -42,6 +43,11 @@ TAVILY_API_KEY=
 AGENT_MEMORY_FILE=.agent_memory.json
 AGENT_MEMORY_MAX_MESSAGES=40
 AGENT_DEBUG=false
+RAG_KNOWLEDGE_DIR=knowledge_base
+RAG_CHUNK_SIZE=700
+RAG_CHUNK_OVERLAP=120
+RAG_TOP_K=4
+RAG_MIN_SCORE=1.2
 
 USER_QUERY=北京今天天气如何？
 ```
@@ -55,6 +61,7 @@ uv run python main.py
 ```
 
 行为说明：
+- 若项目根目录存在 `knowledge_base/`，Agent 会自动启用本地知识库检索工具
 - 设置 `TAVILY_API_KEY` 后，`main.py` 会启用 Tavily 实时网页搜索工具
 - 若设置了 `USER_QUERY`，会执行一次问答后退出
 - 若没有设置 `USER_QUERY`，会进入交互模式（输入 `exit` 或 `quit` 退出）
@@ -62,6 +69,7 @@ uv run python main.py
 - 可通过 `AGENT_MEMORY_MAX_MESSAGES` 控制保留的历史消息条数（默认 `40`）
 - 在交互模式输入 `/memory clear` 可清空记忆
 - 设置 `AGENT_DEBUG=true` 可打印工具加载、调用消息数量与返回消息摘要，便于排查 Tavily/网关问题
+- 当问题属于项目内部文档、私有资料、FAQ、规则说明等内容时，Agent 会优先检索本地知识库并在回答中引用来源路径
 
 你也可以直接在命令行传入问题：
 
@@ -116,6 +124,30 @@ bun run dev
 前端通过 `NEXT_PUBLIC_API_BASE_URL` 指向 Python API，示例见：
 
 - `next-ui/.env.local.example`
+
+## 知识库 RAG
+
+项目根目录下的 `knowledge_base/` 会被自动扫描并作为本地知识库。
+
+当前支持的文件类型：
+
+- `md`
+- `txt`
+- `rst`
+- `json`
+- `csv`
+
+推荐使用方式：
+
+1. 把你的业务文档、FAQ、产品说明、部署说明等放进 `knowledge_base/`
+2. 重新发起一次提问即可，无需手动建索引
+3. 提问示例：`请根据知识库总结当前项目的后端结构`
+
+实现说明：
+
+- `rag.py` 会自动切分文档 chunk
+- 使用轻量 BM25 风格的词法检索做召回
+- Agent 通过 `search_knowledge_base` 工具拿到相关片段后再生成最终答案
 
 ## 常见问题
 

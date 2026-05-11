@@ -21,6 +21,8 @@ from main import (
 
 GENERAL_ASSISTANT_PROMPT = (
     "You are a helpful assistant. "
+    "Use the search_knowledge_base tool for questions about local documents, internal knowledge, private notes, project rules, product docs, or repository-specific information. "
+    "When knowledge base passages are available, answer from those passages and cite the source path. "
     "Use the weather tool for weather questions. "
     "When weather tool results are available, answer based on that data. "
     "Use Tavily search for questions that need current web information, recent facts, news, or source-backed answers. "
