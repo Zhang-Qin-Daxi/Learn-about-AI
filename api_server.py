@@ -3,6 +3,8 @@ import os
 from binascii import Error as BinasciiError
 from base64 import b64decode
 from http import HTTPStatus
+# BaseHTTPRequestHandler 定义 GET/POST 等请求怎么响应。
+# ThreadingHTTPServer 多线程 HTTP 服务器，可以并发处理多个请求。
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Lock
@@ -33,6 +35,7 @@ GENERAL_ASSISTANT_PROMPT = (
 class AgentService:
     def __init__(
         self,
+        # 单独的 * 表示后面的参数必须写成 Key=Value 这种关键字形式，避免传错顺序。
         *,
         system_prompt: str,  # 当前 Agent 的系统提示词。
         memory_env_name: str,  # 记忆文件路径对应的环境变量名。
